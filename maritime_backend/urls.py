@@ -16,10 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from core.views import VesselList, PortList
+from rest_framework.routers import DefaultRouter
+from core import views
+
+# Create a router and register our viewsets
+router = DefaultRouter()
+router.register(r'vessels', views.VesselViewSet)
+router.register(r'ports', views.PortViewSet)
+router.register(r'history', views.VesselHistoryViewSet) # New endpoint for Milestone 3
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/vessels/', VesselList.as_view()),
-    path('api/ports/', PortList.as_view()),
+    path('api/', include(router.urls)), # This includes vessels, ports, and history
 ]
