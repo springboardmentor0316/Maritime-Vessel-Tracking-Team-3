@@ -1,49 +1,53 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
-# 1. Custom User Model for Milestone 1
+# Milestone 1: Custom User Model
 class User(AbstractUser):
     ROLE_CHOICES = (
         ('admin', 'Admin'),
-        ('operator', 'Operator'),
         ('analyst', 'Analyst'),
+        ('operator', 'Operator'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='operator')
 
-    def __str__(self):
-        return f"{self.username} ({self.role})"
-
-# 2. Vessel Model for Milestone 1 & 2
+# Milestone 2: Vessel Metadata
 class Vessel(models.Model):
-    imo_number = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=100)
-    vessel_type = models.CharField(max_length=50) # e.g., Cargo, Tanker
-    flag = models.CharField(max_length=50) # e.g., India, Panama
-    cargo_type = models.CharField(max_length=100, blank=True, null=True)
+    vessel_type = models.CharField(max_length=50)
     last_position_lat = models.FloatField()
     last_position_lon = models.FloatField()
 
-    def __str__(self):
-        return self.name # This fixes the 'Vessel Object' label in the Admin dropdown
-
-# 3. Port Model for Milestone 1
+# Milestone 3: Port Metadata
 class Port(models.Model):
     name = models.CharField(max_length=100)
-    location = models.CharField(max_length=100) # Stored as "Lat, Lon" string
-    country = models.CharField(max_length=50)
+    location = models.CharField(max_length=100) # format: "lat, lon"
 
-    def __str__(self):
-        return self.name
-
-# 4. Vessel History Model for Milestone 3
+# Milestone 3: Vessel History (for breadcrumbs)
 class VesselHistory(models.Model):
-    vessel = models.ForeignKey(Vessel, on_delete=models.CASCADE, related_name='history')
+    vessel = models.ForeignKey(Vessel, on_delete=models.CASCADE)
     latitude = models.FloatField()
     longitude = models.FloatField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        ordering = ['-timestamp'] # Shows the newest movement first
+# Milestone 4: Voyages (Added to fix your error)
+class Voyage(models.Model):
+    vessel = models.ForeignKey(Vessel, on_delete=models.CASCADE)
+    port_from = models.ForeignKey(Port, related_name='departures', on_delete=models.CASCADE)
+    port_to = models.ForeignKey(Port, related_name='arrivals', on_delete=models.CASCADE)
+    departure_time = models.DateTimeField()
+    arrival_time = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=50)
 
-    def __str__(self):
-        return f"{self.vessel.name} movement at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+# Milestone 3: Safety Events (Added to fix your error)
+class Event(models.Model):
+    vessel = models.ForeignKey(Vessel, on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=50) # Storm, Piracy, etc.
+    location = models.CharField(max_length=100)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    details = models.TextField()
+
+# Milestone 3: Notifications (THE MISSING MODEL CAUSING YOUR ERROR)
+class Notification(models.Model):
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)

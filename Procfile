@@ -1,0 +1,1 @@
+web: gunicorn maritime_backend.wsgi
