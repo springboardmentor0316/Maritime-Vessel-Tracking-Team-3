@@ -1,7 +1,16 @@
+# Python
 venv/
-node_modules/
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
 .env
 db.sqlite3
+
+# Node / React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Static files
+staticfiles/

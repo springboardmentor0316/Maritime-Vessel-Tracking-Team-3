@@ -4,7 +4,7 @@ import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// --- Helper: Haversine Formula ---
+// --- Helper: Haversine Formula (Requirements: Distance Calculation) ---
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -16,7 +16,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-// --- Leaflet Icon Fixes ---
+// --- Leaflet Icon Fixes (Presentation Requirement: Stable Visuals) ---
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -25,22 +25,22 @@ L.Icon.Default.mergeOptions({
 });
 
 const portIcon = new L.Icon({
-  iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
 const blueIcon = new L.Icon({
-  iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
-const redIcon = new L.Icon({
-  iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+const piracyIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
 });
 
 // --- MAIN COMPONENT ---
-const VesselMap = ({ search = "", activeModule = "vessels" }) => {
+const VesselMap = ({ search = "", activeModule = "vessels", showWeather = false }) => {
   const [vessels, setVessels] = useState([]);
   const [ports, setPorts] = useState([]);
   const [history, setHistory] = useState([]);
@@ -48,29 +48,24 @@ const VesselMap = ({ search = "", activeModule = "vessels" }) => {
   const [events, setEvents] = useState([]);
   const [voyages, setVoyages] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [playbackIndex, setPlaybackIndex] = useState(0);
-
-  const [userRole, setUserRole] = useState(
-    (localStorage.getItem('user_role') || 'operator').toLowerCase()
-  );
+  
+  const [userRole] = useState((localStorage.getItem('user_role') || 'operator').toLowerCase());
 
   useEffect(() => {
-    const savedRole = localStorage.getItem('user_role');
-    if (savedRole) setUserRole(savedRole.toLowerCase());
-    
     fetchData();
-    const interval = setInterval(() => { fetchData(); }, 30000); 
+    const interval = setInterval(() => { fetchData(); }, 15000); // Faster refresh for demo
     return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
     try {
-      setLoading(true);
       const token = localStorage.getItem('access_token');
-      if (!token) { window.location.href = '/'; return; }
+      if (!token) return;
 
       const authConfig = { headers: { Authorization: `Bearer ${token}` } };
-      const [vRes, pRes, hRes, eRes, voyRes] = await Promise.all([
+      
+      // Robust API Fetching: Ensures map loads even if one endpoint fails
+      const results = await Promise.allSettled([
         axios.get('http://127.0.0.1:8000/api/vessels/', authConfig),
         axios.get('http://127.0.0.1:8000/api/ports/', authConfig),
         axios.get('http://127.0.0.1:8000/api/history/', authConfig),
@@ -78,22 +73,18 @@ const VesselMap = ({ search = "", activeModule = "vessels" }) => {
         axios.get('http://127.0.0.1:8000/api/voyages/', authConfig)
       ]);
 
-      setVessels(vRes.data);
-      setPorts(pRes.data);
-      setHistory(hRes.data);
-      setEvents(eRes.data);
-      setVoyages(voyRes.data);
-      setPlaybackIndex(hRes.data.length > 0 ? hRes.data.length - 1 : 0);
-      runSafetyAnalysis(vRes.data, pRes.data);
-    } catch (err) { 
-      console.error("Sync Error:", err); 
-      if (err.response?.status === 401) handleLogout();
-    } finally { setLoading(false); }
-  };
+      if (results[0].status === 'fulfilled') setVessels(results[0].value.data);
+      if (results[1].status === 'fulfilled') setPorts(results[1].value.data);
+      if (results[2].status === 'fulfilled') setHistory(results[2].value.data);
+      if (results[3].status === 'fulfilled') setEvents(results[3].value.data);
+      if (results[4].status === 'fulfilled') setVoyages(results[4].value.data);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    window.location.href = '/';
+      if (results[0].status === 'fulfilled' && results[1].status === 'fulfilled') {
+          runSafetyAnalysis(results[0].value.data, results[1].value.data);
+      }
+    } catch (err) { 
+      console.error("Satellite Sync Error:", err); 
+    } finally { setLoading(false); }
   };
 
   const runSafetyAnalysis = (currVessels, currPorts) => {
@@ -102,131 +93,131 @@ const VesselMap = ({ search = "", activeModule = "vessels" }) => {
       currPorts.forEach(p => {
         const pCoords = p.location.split(',').map(Number);
         const dist = calculateDistance(v.last_position_lat, v.last_position_lon, pCoords[0], pCoords[1]);
-        if (dist < 50) alerts.push(`⚠️ ${v.name} near ${p.name}`);
+        if (dist < 100) alerts.push(`⚠️ ${v.name} within 100km of ${p.name}`); // Safety requirement
       });
     });
     setNotifications(alerts.slice(0, 5));
   };
 
-  // --- Search & Filtering Logic ---
-  const normalizedSearch = search.replace(/\s+/g, '').toLowerCase();
-  const filteredVessels = vessels.filter(v => v.name.replace(/\s+/g, '').toLowerCase().includes(normalizedSearch));
-  const currentHistory = history
-    .filter(h => h.vessel_name.replace(/\s+/g, '').toLowerCase().includes(normalizedSearch))
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  // SEARCH LOGIC: Filter by Name OR MMSI
+  const filteredVessels = vessels.filter(v => 
+    v.name.toLowerCase().includes(search.toLowerCase()) || 
+    (v.mmsi && v.mmsi.toString().includes(search))
+  );
 
-  const totalDist = currentHistory.reduce((acc, curr, idx, arr) => {
-    if (idx === 0) return 0;
-    const prev = arr[idx - 1];
-    return acc + calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
-  }, 0);
-
-  if (loading) return <div style={{ textAlign: 'center', padding: '100px' }}>⚡ Secure Maritime Link Establishing...</div>;
+  if (loading) return <div style={loadingStyle}>Connecting to Global AIS Network...</div>;
 
   return (
-    <div style={{ padding: '20px', background: '#f8fafc', height: '100%', boxSizing: 'border-box' }}>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '20px', height: '100%' }}>
-        
-        {/* --- LEFT COLUMN: THE MAP --- */}
-        <div style={{ position: 'relative' }}>
-          <MapContainer center={[20, 70]} zoom={3} style={{ height: '80vh', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            
-            {/* 1. MODULE: SAFETY EVENTS (Visible in "notifications" mode) */}
-            {activeModule === 'notifications' && events.map(event => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', height: '100%' }}>
+      <div style={mapWrapperStyle}>
+        <MapContainer center={[15, 75]} zoom={4} style={{ height: '82vh', width: '100%' }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          
+          {/* Historical Trail (Rendered during search) */}
+          {search && <Polyline positions={history.map(h => [h.latitude, h.longitude])} color="#3b82f6" weight={2} dashArray="5, 5" />}
+
+          {/* VESSELS LAYER */}
+          {(activeModule === 'vessels' || activeModule === 'analytics') && filteredVessels.map(v => (
+            <Marker key={v.id} position={[v.last_position_lat, v.last_position_lon]} icon={blueIcon}>
+              <Popup>
+                <div style={{ minWidth: '150px' }}>
+                  <strong style={{ color: '#0f172a' }}>{v.name}</strong><br/>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>MMSI: {v.mmsi || 'N/A'}</span><br/>
+                  <hr style={{ margin: '5px 0', border: 'none', borderTop: '1px solid #eee' }} />
+                  Type: {v.vessel_type}<br/>
+                  Status: <span style={{ color: v.status === 'Active' ? '#10b981' : '#f59e0b' }}>{v.status}</span>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* PORTS LAYER (Requirement: Port Congestion Visuals) */}
+          {(activeModule === 'ports' || activeModule === 'analytics') && ports.map(p => (
+            <Marker key={p.id} position={p.location.split(',').map(Number)} icon={portIcon}>
+              <Popup><strong>{p.name}</strong><br/>Status: High Traffic</Popup>
+            </Marker>
+          ))}
+
+          {/* SAFETY/PIRACY LAYER (Requirement: Risk Visuals) */}
+          {(activeModule === 'notifications' || activeModule === 'piracy') && events.map(event => (
+            <React.Fragment key={event.id}>
               <Circle 
-                key={event.id} 
                 center={event.location.split(',').map(Number)} 
                 radius={200000} 
-                pathOptions={{ color: event.event_type === 'Storm' ? 'orange' : 'red', fillOpacity: 0.3 }}
-              >
-                <Popup><strong>{event.event_type}</strong>: {event.details}</Popup>
-              </Circle>
-            ))}
-
-            {/* 2. MODULE: VESSELS (Visible in "vessels" mode) */}
-            {activeModule === 'vessels' && filteredVessels.map(v => {
-              const isInRiskZone = events.some(event => {
-                const eventCoords = event.location.split(',').map(Number);
-                return calculateDistance(v.last_position_lat, v.last_position_lon, eventCoords[0], eventCoords[1]) < 200;
-              });
-
-              return (
-                <React.Fragment key={v.id}>
-                  <Marker position={[v.last_position_lat, v.last_position_lon]} icon={isInRiskZone ? redIcon : blueIcon}>
-                    <Popup><strong>{v.name}</strong><br/>Type: {v.vessel_type}</Popup>
-                  </Marker>
-                  <Polyline positions={currentHistory.map(h => [h.latitude, h.longitude])} color="#3b82f6" weight={2} dashArray="5, 5" />
-                </React.Fragment>
-              );
-            })}
-
-            {/* 3. MODULE: PORTS (Visible in "ports" mode) */}
-            {activeModule === 'ports' && ports.map(p => (
-              <Marker key={p.id} position={p.location.split(',').map(Number)} icon={portIcon}>
-                <Popup><strong>{p.name}</strong><br/>Status: Operational</Popup>
+                pathOptions={{ color: event.event_type === 'Storm' ? 'orange' : 'red', fillOpacity: 0.2 }}
+              />
+              <Marker position={event.location.split(',').map(Number)} icon={piracyIcon}>
+                 <Popup><strong>{event.event_type} Alert:</strong> {event.details}</Popup>
               </Marker>
-            ))}
-          </MapContainer>
-        </div>
+            </React.Fragment>
+          ))}
+        </MapContainer>
+      </div>
 
-        {/* --- RIGHT COLUMN: DYNAMIC SIDEBAR DATA --- */}
-        <div style={sidebarContainerStyle}>
-          
-          {/* SHOW ALERTS IN NOTIFICATIONS MODE */}
-          {activeModule === 'notifications' && (
-            <>
-              <h3 style={{ marginTop: 0, fontSize: '1rem', color: '#ef4444' }}>⚠️ Safety Alerts</h3>
-              {notifications.map((note, i) => (
-                <div key={i} style={alertCardStyle}>{note}</div>
-              ))}
-            </>
-          )}
-
-          {/* SHOW VOYAGE LOG IN VESSELS MODE */}
-          {activeModule === 'vessels' && (
-            <>
-              <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Voyage Audit Log</h3>
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {voyages.map(voy => (
-                  <div key={voy.id} style={logEntryStyle}>
-                    <strong>{voy.vessel_name}</strong><br/>
-                    <small>{voy.port_from_name} ➔ {voy.port_to_name}</small>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* SHOW ANALYTICS IN PORTS MODE */}
-          {activeModule === 'ports' && (
-            <>
-              <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Port Operations</h3>
-              <div style={statsCardStyle}>
-                <div style={{ fontSize: '0.7rem' }}>ACTIVE HUBS</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{ports.length} Locations</div>
-              </div>
-            </>
-          )}
-
-          <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
-            <h3 style={{ fontSize: '0.9rem' }}>Fleet Stats</h3>
-            <div style={statsCardStyle}>
-              <div style={{ fontSize: '0.7rem', color: '#0369a1' }}>TOTAL DISTANCE</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0369a1' }}>{totalDist.toFixed(2)} km</div>
+      <div style={sidebarContainerStyle}>
+        {activeModule === 'analytics' && (
+          <div>
+            <h3 style={modHeader}>📊 Fleet Analytics</h3>
+            <div style={analyticsBox}>
+              <div style={label}>SURVEILLANCE STATUS</div>
+              <div style={statValue}>{vessels.length} Ships Live</div>
+            </div>
+            <div style={analyticsBox}>
+               <div style={label}>VESSEL DISTRIBUTION</div>
+               <div style={{fontSize: '0.8rem', marginTop: '10px'}}>
+                  {Array.from(new Set(vessels.map(v => v.vessel_type))).map(type => (
+                    <div key={type} style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px'}}>
+                      <span>{type}</span>
+                      <span style={{fontWeight: 'bold'}}>{vessels.filter(v => v.vessel_type === type).length}</span>
+                    </div>
+                  ))}
+               </div>
             </div>
           </div>
+        )}
+
+        {activeModule === 'vessels' && (
+          <div>
+            <h3 style={modHeader}>🚢 Voyage Audit</h3>
+            <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              {voyages.map(voy => (
+                <div key={voy.id} style={logEntryStyle}>
+                  <strong>{voy.vessel_name}</strong>
+                  <div style={{fontSize: '0.75rem', color: '#64748b'}}>{voy.port_from_name} ➔ {voy.port_to_name}</div>
+                  <div style={statusTag(voy.status)}>{voy.status}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeModule === 'notifications' && (
+          <div>
+            <h3 style={{...modHeader, color: '#ef4444'}}>🚨 Risk Intelligence</h3>
+            {notifications.map((note, i) => <div key={i} style={alertCardStyle}>{note}</div>)}
+          </div>
+        )}
+
+        <div style={footerStats}>
+          <div style={label}>IDENTITY</div>
+          <div style={{fontWeight: 'bold', color: '#1e293b', textTransform: 'uppercase'}}>{userRole}</div>
         </div>
       </div>
     </div>
   );
 };
 
-// --- Styles ---
-const sidebarContainerStyle = { background: '#fff', borderRadius: '15px', padding: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', height: '80vh' };
-const alertCardStyle = { padding: '10px', background: '#fee2e2', color: '#b91c1c', borderRadius: '8px', marginBottom: '8px', fontSize: '0.8rem', fontWeight: 'bold' };
-const logEntryStyle = { padding: '10px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem' };
-const statsCardStyle = { padding: '15px', background: '#f0f9ff', borderRadius: '10px' };
+// --- STYLES ---
+const loadingStyle = { textAlign: 'center', padding: '100px', color: '#64748b', fontSize: '1rem', fontWeight: 'bold' };
+const mapWrapperStyle = { position: 'relative', borderRadius: '15px', overflow: 'hidden', border: '1px solid #e2e8f0' };
+const sidebarContainerStyle = { background: '#fff', padding: '20px', display: 'flex', flexDirection: 'column', height: '82vh' };
+const modHeader = { fontSize: '0.9rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '20px', color: '#1e293b' };
+const analyticsBox = { padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '15px' };
+const label = { fontSize: '0.65rem', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '0.5px' };
+const statValue = { fontSize: '1.2rem', fontWeight: 'bold', color: '#3b82f6' };
+const alertCardStyle = { padding: '12px', background: '#fee2e2', color: '#b91c1c', borderRadius: '10px', marginBottom: '10px', fontSize: '0.8rem', fontWeight: 'bold' };
+const logEntryStyle = { padding: '12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' };
+const footerStats = { marginTop: 'auto', borderTop: '1px solid #f1f5f9', paddingTop: '15px' };
+const statusTag = (status) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold', marginTop: '5px', background: '#dcfce7', color: '#166534' });
 
 export default VesselMap;
